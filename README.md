@@ -20,6 +20,7 @@ Cloudflare Worker：用 Email Routing 把 Git 平台邮件收进收件箱，按 
 
 ## CI/CD
 
-Cloudflare Workers Builds 已连接这个仓库：`main` 推送会跑 `npx wrangler deploy`。Email Routing 规则在 Dashboard 管理，不要写进 `addresses`，否则 CI 会和现有规则冲突。
+- GitHub Actions（`.github/workflows/ci.yml`）：`main` 推送和 PR 跑 `npm test`
+- Cloudflare Workers Builds：`main` 推送后 `npx wrangler deploy`
 
-可选：GitHub Actions `.github/workflows/deploy.yml` 需要仓库 Secrets `CLOUDFLARE_API_TOKEN` 和 `CLOUDFLARE_ACCOUNT_ID`。
+Email Routing 规则在 Dashboard 管理，不要写进 `addresses`，否则部署会和现有规则冲突。
