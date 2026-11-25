@@ -1,0 +1,36 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "git-identity-hub",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-25",
+  "compatibility_flags": ["nodejs_compat"],
+  "upload_source_maps": true,
+  "keep_vars": true,
+  "addresses": ["git@tonyxyz.com"],
+  "routes": [
+    { "pattern": "git.tonyxyz.com", "custom_domain": true }
+  ],
+  "observability": {
+    "enabled": true,
+    "traces": {
+      "enabled": true
+    }
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "git-identity-hub",
+      "database_id": "6bd23003-393e-41bc-9f73-cb4a2efc85f3"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "CONFIG",
+      "id": "01119535ba724b8fa12b15a3fa230047"
+    },
+    {
+      "binding": "MAIL",
+      "id": "700e87aee4164ff8836e86f22e5bad73"
+    }
+  ]
+}
