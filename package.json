@@ -1,0 +1,22 @@
+{
+  "name": "git-identity-hub",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "types": "wrangler types",
+    "test": "tsx --test test/*.test.ts",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "postal-mime": "^2.6.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.53.0"
+  }
+}
