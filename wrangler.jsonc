@@ -6,7 +6,7 @@
   "compatibility_flags": ["nodejs_compat"],
   "upload_source_maps": true,
   "keep_vars": true,
-  "addresses": ["git@tonyxyz.com"],
+  "workers_dev": true,
   "routes": [
     { "pattern": "git.tonyxyz.com", "custom_domain": true }
   ],
