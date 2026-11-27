@@ -11,6 +11,7 @@
     "check": "tsc --noEmit"
   },
   "dependencies": {
+    "@block65/webcrypto-web-push": "^2.0.0",
     "postal-mime": "^2.6.1"
   },
   "devDependencies": {
