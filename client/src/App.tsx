@@ -124,19 +124,37 @@ function SettingsRoute(props: { boot: Bootstrap; onBoot: (next: Bootstrap) => vo
         setDestinationsMessage(err instanceof Error ? err.message : "没有读到已验证的转发地址。过一会儿再打开设置。");
       });
   }, []);
-  async function save(body: { intent: "forward" | "theme"; forward_to?: string; theme?: ThemeChoice }) {
+  async function save(body: {
+    intent: "forward" | "theme" | "identity";
+    forward_to?: string;
+    theme?: ThemeChoice;
+    user_name?: string;
+    user_email?: string;
+  }) {
     setError(null);
     setNotice(null);
     try {
-      const result = await postJson<{ message: string; theme: ThemeChoice; forwardTo: string | null }>("/api/settings", body);
+      const result = await postJson<{
+        message: string;
+        theme: ThemeChoice;
+        forwardTo: string | null;
+        identity?: Bootstrap["identity"];
+      }>("/api/settings", body);
       setNotice(result.message);
-      props.onBoot({ ...props.boot, theme: result.theme, forwardTo: result.forwardTo });
+      props.onBoot({
+        ...props.boot,
+        theme: result.theme,
+        forwardTo: result.forwardTo,
+        identity: result.identity ?? props.boot.identity,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "没有保存。");
     }
   }
   return (
     <SettingsPage
+      userName={props.boot.identity.user_name}
+      userEmail={props.boot.identity.user_email}
       forwardTo={props.boot.forwardTo}
       destinations={destinations}
       destinationsMessage={destinationsMessage}
@@ -144,6 +162,7 @@ function SettingsRoute(props: { boot: Bootstrap; onBoot: (next: Bootstrap) => vo
       pushPublicKey={props.boot.pushPublicKey}
       notice={notice}
       error={error}
+      onSaveIdentity={(value) => save({ intent: "identity", user_name: value.userName, user_email: value.userEmail })}
       onSaveForward={(value) => save({ intent: "forward", forward_to: value })}
       onSaveTheme={(value) => save({ intent: "theme", theme: value })}
     />

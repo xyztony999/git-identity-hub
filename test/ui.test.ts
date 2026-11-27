@@ -130,6 +130,8 @@ describe("settings", () => {
   it("offers verify forwarding, theme, and browser notifications", () => {
     const html = render(
       createElement(SettingsPage, {
+        userName: "Git User",
+        userEmail: "git@example.com",
         forwardTo: "desk@example.com",
         destinations: ["desk@example.com", "other@example.com"],
         destinationsMessage: null,
@@ -139,6 +141,8 @@ describe("settings", () => {
         error: null,
       }),
     );
+    assert.match(html, /保存身份/);
+    assert.match(html, /user\.name/);
     assert.match(html, /已验证的地址中选/);
     assert.match(html, /不转发/);
     assert.match(html, /desk@example.com/);
@@ -152,6 +156,8 @@ describe("settings", () => {
   it("says notifications are unavailable without a key", () => {
     const html = render(
       createElement(SettingsPage, {
+        userName: "Git User",
+        userEmail: "git@example.com",
         forwardTo: null,
         destinations: [],
         destinationsMessage: "还不能读取 Email Routing 里的地址。",

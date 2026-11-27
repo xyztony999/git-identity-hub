@@ -3,6 +3,8 @@ import React, { useEffect, useState } from "react";
 import type { ThemeChoice } from "../types";
 
 export function SettingsPage(props: {
+  userName: string;
+  userEmail: string;
   forwardTo: string | null;
   destinations: string[];
   destinationsMessage: string | null;
@@ -12,13 +14,20 @@ export function SettingsPage(props: {
   error: string | null;
   onSaveForward?: (value: string) => void;
   onSaveTheme?: (value: ThemeChoice) => void;
+  onSaveIdentity?: (value: { userName: string; userEmail: string }) => void;
 }) {
   const known = props.destinations.some((email) => email.toLowerCase() === (props.forwardTo ?? "").toLowerCase());
+  const [userName, setUserName] = useState(props.userName);
+  const [userEmail, setUserEmail] = useState(props.userEmail);
   const [forward, setForward] = useState(known ? props.forwardTo ?? "" : "");
   const [theme, setTheme] = useState<ThemeChoice>(props.theme);
   const [pushText, setPushText] = useState("正在检查这台浏览器。");
   const [pushOn, setPushOn] = useState(false);
 
+  useEffect(() => {
+    setUserName(props.userName);
+    setUserEmail(props.userEmail);
+  }, [props.userName, props.userEmail]);
   useEffect(() => {
     const stillKnown = props.destinations.some((email) => email.toLowerCase() === (props.forwardTo ?? "").toLowerCase());
     setForward(stillKnown ? props.forwardTo ?? "" : "");
@@ -64,6 +73,22 @@ export function SettingsPage(props: {
       </Typography>
       {props.notice ? <Alert severity="success">{props.notice}</Alert> : null}
       {props.error ? <Alert severity="error">{props.error}</Alert> : null}
+      <Stack spacing={1} component="form" onSubmit={(event) => event.preventDefault()}>
+        <Typography variant="h6">Git 身份</Typography>
+        <Typography color="text.secondary">
+          这两项会出现在身份页的 git config 里。第一次部署时，没有记录就用 wrangler 里的 IDENTITY_NAME 和 PUBLIC_MAILBOX。收信地址仍在 Cloudflare Email Routing 里配置，改这里不会改路由。
+        </Typography>
+        <TextField label="user.name" value={userName} onChange={(event) => setUserName(event.target.value)} fullWidth />
+        <TextField label="user.email" type="email" value={userEmail} onChange={(event) => setUserEmail(event.target.value)} fullWidth />
+        <Button
+          variant="contained"
+          type="button"
+          onClick={() => props.onSaveIdentity?.({ userName: userName.trim(), userEmail: userEmail.trim() })}
+          sx={{ alignSelf: "flex-start" }}
+        >
+          保存身份
+        </Button>
+      </Stack>
       <Stack spacing={1} component="form" onSubmit={(event) => event.preventDefault()}>
         <Typography variant="h6">验证信转发</Typography>
         <Typography color="text.secondary">

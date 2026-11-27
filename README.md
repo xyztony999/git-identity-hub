@@ -9,7 +9,8 @@ Cloudflare Worker：用 Email Routing 把 Git 平台邮件收进收件箱，按 
 - `email()` 入站 → 分类（github / gitee / verify / other / untrusted）→ D1 索引
 - 原始 eml 写入 KV（账号开通 R2 后可把 `MAIL` 换成 R2）
 - Access 保护的信件列表 / 详情（可打开验证链接）/ 身份页 / 设置页。界面是 Material UI
-- 默认不转发。若要备份验证信，在 KV `CONFIG` 写入键 `forward_verify_to`，值必须是账号内已验证 destination
+- 默认不转发。若要备份验证信，在设置页从已验证 destination 里选，或在 KV `CONFIG` 写入键 `forward_verify_to`
+- 部署后在设置页改 `user.name` 和 `user.email`。`IDENTITY_NAME` / `PUBLIC_MAILBOX` 只在身份表还没有记录时作默认值。改设置不会改 Email Routing
 
 ## 本地部署
 
@@ -21,6 +22,6 @@ Cloudflare Worker：用 Email Routing 把 Git 平台邮件收进收件箱，按 
 ## CI/CD
 
 - GitHub Actions（`.github/workflows/ci.yml`）：`main` 推送和 PR 跑 `npm test`
-- Cloudflare Workers Builds：`main` 推送后 `npx wrangler deploy`，会先构建 Material UI 前端
+- Cloudflare Workers Builds：`main` 推送后 `npx wrangler deploy`
 
 Email Routing 规则在 Dashboard 管理，不要写进 `addresses`，否则部署会和现有规则冲突。

@@ -3,6 +3,7 @@ import { classify, type MailSource } from "./classify";
 import { classifyInputFromHeaders, headerBag } from "./headers";
 import { extractLinks } from "./links";
 import { verifiedDestinationEmails } from "./destinations";
+import { parseGitIdentity } from "./identity-settings";
 import { asSub, notifyNewMail, readSubs, removeSub, serviceWorkerScript, upsertSub, writeSubs } from "./push";
 
 const SOURCES = new Set<MailSource>(["github", "gitee", "verify", "other", "untrusted"]);
@@ -239,8 +240,37 @@ async function loadTheme(env: Env): Promise<ThemeChoice> {
 }
 
 async function saveSettings(request: Request, env: Env, identityEmail: string): Promise<Response> {
-  const body = (await request.json().catch(() => null)) as { intent?: unknown; theme?: unknown; forward_to?: unknown } | null;
+  const body = (await request.json().catch(() => null)) as {
+    intent?: unknown;
+    theme?: unknown;
+    forward_to?: unknown;
+    user_name?: unknown;
+    user_email?: unknown;
+  } | null;
   const intent = String(body?.intent ?? "");
+  if (intent === "identity") {
+    const parsed = parseGitIdentity(body?.user_name, body?.user_email);
+    if (!parsed.ok) return json({ message: parsed.message }, 400);
+    await env.DB.prepare(
+      `INSERT INTO identity (id, user_name, user_email) VALUES (1, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET user_name = excluded.user_name, user_email = excluded.user_email`,
+    )
+      .bind(parsed.userName, parsed.userEmail)
+      .run();
+    const saved = await getIdentity(env);
+    return json({
+      message: "身份已保存。",
+      theme: await loadTheme(env),
+      forwardTo: await env.CONFIG.get("forward_verify_to"),
+      identity: {
+        user_name: saved.user_name,
+        user_email: saved.user_email,
+        gpg_fingerprint: saved.gpg_fingerprint,
+        github_verified: saved.github_verified,
+        gitee_verified: saved.gitee_verified,
+      },
+    });
+  }
   if (intent === "theme") {
     const next = String(body?.theme ?? "");
     if (next !== "light" && next !== "dark" && next !== "system") {
