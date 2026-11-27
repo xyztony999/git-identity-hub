@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { detailPage, errorPage, identityPage, inboxPage } from "../src/ui.ts";
+import { detailPage, errorPage, identityPage, inboxPage, settingsPage } from "../src/ui.ts";
 
 const sample = {
   id: "11111111-2222-4333-8444-555555555555",
@@ -35,8 +35,10 @@ describe("inboxPage", () => {
     assert.match(html, /账册还是空的/);
     assert.match(html, /git@example\.com/);
     assert.match(html, /记在横线上/);
-    assert.match(html, /class="stamp"/);
-    assert.match(html, /class="chop"/);
+    assert.match(html, /class="logo"/);
+    assert.match(html, /class="addr"/);
+    assert.match(html, /href="\/settings"/);
+    assert.doesNotMatch(html, /writing-mode|class="chop"|class="stamp"/);
     assert.doesNotMatch(html, /Access/);
   });
 
@@ -64,6 +66,7 @@ describe("inboxPage", () => {
     assert.match(html, /GitHub/);
     assert.match(html, /--i:0/);
     assert.match(html, /class="subj "/);
+    assert.match(html, /class="byline"/);
     assert.doesNotMatch(html, /class="subj read"/);
   });
 });
@@ -118,7 +121,30 @@ describe("errorPage", () => {
     assert.match(html, /没有这封信/);
     assert.match(html, /回账册/);
     assert.match(html, /class="empty-sheet"/);
-    assert.match(html, /class="stamp"/);
+    assert.match(html, /class="logo"/);
+  });
+});
+
+describe("settingsPage", () => {
+  it("offers verify forwarding and theme choices", () => {
+    const html = settingsPage({
+      user: null,
+      identityEmail: "git@example.com",
+      theme: "dark",
+      forwardTo: "desk@example.com",
+      notice: "验证信会转到这个地址。",
+      error: null,
+    });
+    assert.match(html, /data-theme="dark"/);
+    assert.match(html, /只有分类为「验证」的信会转到这个地址/);
+    assert.match(html, /GitHub 通知和 Gitee 绑定信仍只记在账册里/);
+    assert.match(html, /name="forward_to"/);
+    assert.match(html, /value="desk@example.com"/);
+    assert.match(html, /浅色纸/);
+    assert.match(html, /跟随系统/);
+    assert.match(html, /value="dark" checked/);
+    assert.match(html, /\[data-theme="dark"\]/);
+    assert.match(html, /prefers-color-scheme: dark/);
   });
 });
 
@@ -134,6 +160,7 @@ describe("aesthetic contract", () => {
     assert.match(html, /--font-body:"Literata"/);
     assert.match(html, /--font-mono:"Fragment Mono"/);
     assert.match(html, /--seal:#c23b22/);
+    assert.match(html, /data-theme="system"/);
     assert.match(html, /family=Instrument\+Serif/);
     assert.match(html, /family=Literata/);
     assert.match(html, /family=Fragment\+Mono/);

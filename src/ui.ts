@@ -3,20 +3,27 @@ import { rankLinks } from "./links";
 
 const SOURCES: MailSource[] = ["github", "gitee", "verify", "other", "untrusted"];
 
-export function layout(opts: {
+export type ThemeChoice = "light" | "dark" | "system";
+
+type Shell = {
   title: string;
   user: string | null;
   identityEmail: string;
-  active?: string;
+  active?: "inbox" | "identity" | "settings";
+  theme?: ThemeChoice;
   body: string;
-}): string {
+};
+
+export function layout(opts: Shell): string {
+  const theme = opts.theme === "light" || opts.theme === "dark" || opts.theme === "system" ? opts.theme : "system";
   return `<!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="${theme}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   <title>${escapeHtml(opts.title)}</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23c23b22'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-size='18' fill='%23f3ead8'%3E收%3C/text%3E%3C/svg%3E">
+  <link rel="icon" href="/favicon.ico">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fragment+Mono&family=Instrument+Serif:ital@0;1&family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;1,7..72,400&display=swap" rel="stylesheet">
@@ -25,24 +32,36 @@ export function layout(opts: {
 <body>
   <div class="fiber" aria-hidden="true"></div>
   <div class="desk">
-    ${stamp(opts)}
+    ${bar(opts)}
     ${opts.body}
   </div>
 </body>
 </html>`;
 }
 
-function stamp(opts: { user: string | null; identityEmail: string; active?: string }): string {
+const SEAL_COVER = "M1.5 8.2 18 3.4 34.5 8.2V24.6L18 29.4 1.5 24.6V8.2z";
+const SEAL_SPINE = "M17.15 6.2h1.7v20.2h-1.7z";
+
+export function faviconSvg(): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 32"><path fill="#c23b22" d="${SEAL_COVER}"/><path fill="#f6efe2" d="${SEAL_SPINE}"/></svg>`;
+}
+
+function logo(): string {
+  return `<svg class="logo" viewBox="0 0 36 32" role="img" aria-label="账册印"><path fill="currentColor" d="${SEAL_COVER}"/><path class="impress" d="${SEAL_SPINE}"/></svg>`;
+}
+
+function bar(opts: Shell): string {
   const who = opts.user ? `<p class="who">${escapeHtml(opts.user)}</p>` : "";
-  return `<aside class="stamp">
-    <div class="chop" aria-hidden="true">收</div>
+  return `<header class="bar">
+    <a class="lockup" href="/">${logo()}<span class="word">来信</span></a>
     <p class="addr">${escapeHtml(opts.identityEmail)}</p>
     <nav aria-label="账册">
       <a href="/" class="${opts.active === "inbox" ? "on" : ""}">账册</a>
       <a href="/identity" class="${opts.active === "identity" ? "on" : ""}">身份</a>
+      <a href="/settings" class="${opts.active === "settings" ? "on" : ""}">设置</a>
     </nav>
     ${who}
-  </aside>`;
+  </header>`;
 }
 
 export function inboxPage(opts: {
@@ -50,12 +69,12 @@ export function inboxPage(opts: {
   source: string | null;
   identityEmail: string;
   user: string | null;
+  theme?: ThemeChoice;
 }): string {
   const filters = [`<a href="/" class="${opts.source ? "" : "on"}">全部</a>`]
     .concat(
       SOURCES.map(
-        (s) =>
-          `<a href="/?source=${s}" class="${opts.source === s ? "on" : ""}">${label(s)}</a>`,
+        (s) => `<a href="/?source=${s}" class="${opts.source === s ? "on" : ""}">${label(s)}</a>`,
       ),
     )
     .join("");
@@ -70,11 +89,8 @@ export function inboxPage(opts: {
     user: opts.user,
     identityEmail: opts.identityEmail,
     active: "inbox",
+    theme: opts.theme,
     body: `<main class="folio">
-      <header class="folio-head">
-        <p class="kicker">私人账册</p>
-        <h1>来信</h1>
-      </header>
       <nav class="filters" aria-label="分类">${filters}</nav>
       ${items}
     </main>`,
@@ -85,6 +101,7 @@ export function detailPage(opts: {
   msg: StoredMessage;
   user: string | null;
   identityEmail: string;
+  theme?: ThemeChoice;
 }): string {
   const links = rankLinks(safeJsonLinks(opts.msg.links));
   const verifyBlock =
@@ -111,6 +128,7 @@ export function detailPage(opts: {
     user: opts.user,
     identityEmail: opts.identityEmail,
     active: "inbox",
+    theme: opts.theme,
     body: `<main class="folio open">
       <p class="close"><a href="/">合上这封信，回账册</a></p>
       <div class="stack">
@@ -138,12 +156,14 @@ export function detailPage(opts: {
 export function identityPage(opts: {
   identity: IdentityRow;
   user: string | null;
+  theme?: ThemeChoice;
 }): string {
   return layout({
     title: "身份",
     user: opts.user,
     identityEmail: opts.identity.user_email,
     active: "identity",
+    theme: opts.theme,
     body: `<main class="folio">
       <header class="folio-head">
         <p class="kicker">名帖</p>
@@ -168,18 +188,75 @@ git config --global user.email "${escapeHtml(opts.identity.user_email)}"</pre>
   });
 }
 
+export function settingsPage(opts: {
+  user: string | null;
+  identityEmail: string;
+  theme?: ThemeChoice;
+  forwardTo: string | null;
+  notice: string | null;
+  error: string | null;
+}): string {
+  const theme = opts.theme === "light" || opts.theme === "dark" || opts.theme === "system" ? opts.theme : "system";
+  const notice = opts.notice ? `<p class="notice" role="status">${escapeHtml(opts.notice)}</p>` : "";
+  const error = opts.error ? `<p class="form-error" role="alert">${escapeHtml(opts.error)}</p>` : "";
+  const picked = (value: ThemeChoice, text: string) =>
+    `<label class="choice"><input type="radio" name="theme" value="${value}"${theme === value ? " checked" : ""}> ${text}</label>`;
+
+  return layout({
+    title: "设置",
+    user: opts.user,
+    identityEmail: opts.identityEmail,
+    active: "settings",
+    theme,
+    body: `<main class="folio">
+      <header class="folio-head">
+        <p class="kicker">配置</p>
+        <h1>设置</h1>
+      </header>
+      ${notice}
+      <section class="sheet">
+        <h2>验证信转发</h2>
+        <p class="note">只有分类为「验证」的信会转到这个地址。GitHub 通知和 Gitee 绑定信仍只记在账册里。地址必须是 Cloudflare Email Routing 里已经验证过的 destination。留空再保存，就停止转发。</p>
+        ${error}
+        <form method="post" action="/settings">
+          <input type="hidden" name="intent" value="forward">
+          <label class="field">转发到
+            <input name="forward_to" type="email" inputmode="email" autocomplete="email" maxlength="254" value="${escapeAttr(opts.forwardTo ?? "")}" placeholder="name@example.com">
+          </label>
+          <button type="submit">保存转发</button>
+        </form>
+      </section>
+      <section class="sheet">
+        <h2>外观</h2>
+        <p class="note">浅色是暖纸，暗色是同一本账册换到夜里。跟随系统时，用这台设备的外观。</p>
+        <form method="post" action="/settings">
+          <input type="hidden" name="intent" value="theme">
+          <div class="choices">
+            ${picked("light", "浅色纸")}
+            ${picked("dark", "暗色")}
+            ${picked("system", "跟随系统")}
+          </div>
+          <button type="submit">保存外观</button>
+        </form>
+      </section>
+    </main>`,
+  });
+}
+
 export function errorPage(opts: {
   user: string | null;
   identityEmail: string;
   title: string;
   message: string;
   next: { href: string; label: string };
+  theme?: ThemeChoice;
 }): string {
   return layout({
     title: opts.title,
     user: opts.user,
     identityEmail: opts.identityEmail,
     active: "inbox",
+    theme: opts.theme,
     body: `<main class="folio">
       <header class="folio-head">
         <p class="kicker">中断</p>
@@ -209,10 +286,12 @@ function emptyState(source: string | null, identityEmail: string): string {
 function rowItem(row: StoredMessage, index: number): string {
   return `<li style="--i:${index}">
     <a href="/m/${encodeURIComponent(row.id)}">
-      <span class="mark ${row.source}">${label(row.source)}</span>
       <span class="subj ${row.read ? "read" : ""}">${escapeHtml(row.subject || "无主题")}</span>
-      <span class="from">${escapeHtml(row.header_from || row.envelope_from || "")}</span>
-      <time>${fmtTime(row.received_at)}</time>
+      <span class="byline">
+        <span class="mark ${row.source}">${label(row.source)}</span>
+        <span class="from">${escapeHtml(row.header_from || row.envelope_from || "")}</span>
+        <time>${fmtTime(row.received_at)}</time>
+      </span>
     </a>
   </li>`;
 }
@@ -266,7 +345,7 @@ function escapeAttr(value: string): string {
 
 function css(): string {
   return `
-:root{
+:root, [data-theme="light"]{
   --paper:#f3ead8;
   --paper-sheet:#f7efe0;
   --paper-deep:#e6d8c0;
@@ -274,7 +353,43 @@ function css(): string {
   --ink-soft:#5e554a;
   --rule:#d3c4ab;
   --seal:#c23b22;
-  --seal-deep:#9e2e1b;
+  --seal-ink:#9e2e1b;
+  --on-seal:#f6efe2;
+  --letter:#f7efe0;
+  --letter-ink:#1c1712;
+  color-scheme:light;
+}
+[data-theme="dark"]{
+  --paper:#14110e;
+  --paper-sheet:#221c17;
+  --paper-deep:#2c261f;
+  --ink:#f3ead8;
+  --ink-soft:#c4b5a0;
+  --rule:#3c342c;
+  --seal:#c23b22;
+  --seal-ink:#e7a090;
+  --on-seal:#f6efe2;
+  --letter:#f7efe0;
+  --letter-ink:#1c1712;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: dark){
+  [data-theme="system"]{
+    --paper:#14110e;
+    --paper-sheet:#221c17;
+    --paper-deep:#2c261f;
+    --ink:#f3ead8;
+    --ink-soft:#c4b5a0;
+    --rule:#3c342c;
+    --seal:#c23b22;
+    --seal-ink:#e7a090;
+    --on-seal:#f6efe2;
+    --letter:#f7efe0;
+    --letter-ink:#1c1712;
+    color-scheme:dark;
+  }
+}
+:root{
   --font-display:"Instrument Serif", "Iowan Old Style", Palatino, serif;
   --font-body:"Literata", Palatino, serif;
   --font-mono:"Fragment Mono", "Courier New", Courier, monospace;
@@ -282,67 +397,87 @@ function css(): string {
 *{box-sizing:border-box}
 html,body{margin:0;min-height:100%;background:var(--paper);color:var(--ink);font-family:var(--font-body);font-optical-sizing:auto}
 a{color:inherit}
-.fiber{pointer-events:none;position:fixed;inset:0;opacity:.18;mix-blend-mode:multiply;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E")}
-.desk{display:grid;grid-template-columns:14rem minmax(0,1fr);min-height:100vh;position:relative;overflow-x:clip}
-.stamp{padding:2.4rem 1.4rem 2rem;border-right:1px solid var(--ink);display:flex;flex-direction:column;gap:1.4rem;position:sticky;top:0;height:100vh}
-.chop{width:4.6rem;height:4.6rem;background:var(--seal);color:var(--paper);font-family:var(--font-display);font-size:2.5rem;line-height:4.6rem;text-align:center;box-shadow:2px 2px 0 var(--seal-deep);letter-spacing:.05em}
-.addr{font-family:var(--font-mono);font-size:.78rem;line-height:1.55;writing-mode:vertical-rl;letter-spacing:.08em;margin:0;color:var(--ink);align-self:flex-start;min-height:12rem;overflow-wrap:anywhere}
-.stamp nav{display:flex;flex-direction:column;gap:.45rem;font-family:var(--font-display);font-size:1.25rem}
-.stamp nav a{text-decoration:none;border-bottom:1px solid transparent;width:max-content;padding-bottom:.1rem}
-.stamp nav a.on,.stamp nav a:hover{border-bottom-color:var(--seal);color:var(--seal)}
-.who{margin-top:auto;font-family:var(--font-mono);font-size:.68rem;color:var(--ink-soft);word-break:break-all}
-.folio{padding:2.2rem 4vw 4rem;min-width:0;overflow-x:clip;background-image:repeating-linear-gradient(to bottom,transparent 0,transparent 31px,var(--rule) 32px);background-attachment:local}
-.folio-head{margin-bottom:1.2rem;animation:enter .55s ease both}
-.kicker{margin:0;font-family:var(--font-mono);font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;color:var(--seal)}
-h1{font-family:var(--font-display);font-weight:400;font-size:clamp(2.2rem,5vw,3.4rem);margin:.15rem 0 0;line-height:1.1}
-.filters{display:flex;flex-wrap:wrap;gap:.35rem 1.1rem;margin:0 0 1.1rem;font-family:var(--font-mono);font-size:.78rem;animation:enter .55s ease both;animation-delay:.05s}
-.filters a{text-decoration:none;border-bottom:1px solid transparent;padding-bottom:.12rem;color:var(--ink-soft)}
+.fiber{pointer-events:none;position:fixed;inset:0;opacity:.16;mix-blend-mode:multiply;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E")}
+[data-theme="dark"] .fiber{mix-blend-mode:overlay;opacity:.28}
+@media (prefers-color-scheme: dark){
+  [data-theme="system"] .fiber{mix-blend-mode:overlay;opacity:.28}
+}
+.desk{min-height:100vh;position:relative}
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:.55rem 1.15rem;padding:1rem 4vw .9rem;border-bottom:1px solid var(--ink)}
+.lockup{display:flex;align-items:center;gap:.6rem;text-decoration:none}
+.logo{width:2.35rem;height:2.05rem;color:var(--seal);display:block;flex:none}
+.logo .impress{fill:var(--on-seal)}
+.word{font-family:var(--font-display);font-size:1.85rem;line-height:1}
+.addr{margin:0;font-family:var(--font-mono);font-size:.78rem;color:var(--ink);overflow-wrap:anywhere}
+.bar nav{display:flex;flex-wrap:wrap;gap:.35rem 1rem;margin-left:auto;font-family:var(--font-display);font-size:1.2rem}
+.bar nav a{text-decoration:none;border-bottom:1px solid transparent;padding-bottom:.08rem}
+.bar nav a.on,.bar nav a:hover{color:var(--seal-ink);border-bottom-color:var(--seal)}
+.who{flex-basis:100%;margin:0;font-family:var(--font-mono);font-size:.68rem;color:var(--ink-soft);overflow-wrap:anywhere}
+.folio{padding:1.2rem 4vw 4rem;min-width:0}
+.folio-head{margin:0 0 1.1rem;animation:enter .55s ease both}
+.kicker{margin:0;font-family:var(--font-mono);font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;color:var(--seal-ink)}
+h1{font-family:var(--font-display);font-weight:400;font-size:clamp(2rem,4vw,3rem);margin:.15rem 0 0;line-height:1.1}
+h2{font-family:var(--font-display);font-weight:400;font-size:1.55rem;margin:0 0 .4rem}
+.filters{display:flex;flex-wrap:wrap;gap:.4rem 1.05rem;margin:0 0 .4rem;font-family:var(--font-mono);font-size:.78rem;animation:enter .55s ease both}
+.filters a{text-decoration:none;border-bottom:1px solid transparent;padding-bottom:.12rem;color:var(--ink)}
 .filters a.on,.filters a:hover{color:var(--ink);border-bottom-color:var(--seal)}
 .ledger{list-style:none;margin:0;padding:0}
-.ledger li{animation:enter .5s ease both;animation-delay:calc(var(--i,0) * 45ms + .08s)}
-.ledger a{display:grid;grid-template-columns:6.2rem minmax(0,1fr) minmax(8rem,16rem) 10.5rem;gap:.8rem 1rem;align-items:baseline;padding:.55rem 0 .5rem;text-decoration:none;border-bottom:1px solid var(--rule);transition:border-bottom-color .16s ease,border-bottom-width .16s ease}
+.ledger li{animation:enter .5s ease both;animation-delay:calc(var(--i,0) * 45ms + .06s)}
+.ledger a{display:block;padding:.72rem 0 .62rem;text-decoration:none;border-bottom:1px solid var(--rule);transition:border-bottom-color .16s ease,border-bottom-width .16s ease}
 .ledger a:hover,.ledger a:focus-visible{border-bottom-color:var(--seal);border-bottom-width:2px;outline:none}
-.subj{font-size:1.12rem}
+.subj{display:block;font-size:1.16rem;line-height:1.35}
 .subj.read{color:var(--ink-soft)}
-.from,time,.meta dd,.href,.links a{font-family:var(--font-mono);font-size:.75rem;color:var(--ink-soft);overflow-wrap:anywhere}
-.mark{display:inline-block;font-family:var(--font-mono);font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;padding:.12rem .4rem;border:1px solid var(--rule);color:var(--ink-soft);width:max-content}
-.mark.verify,.mark.untrusted{color:var(--seal);border-color:var(--seal)}
-.empty-sheet{max-width:36rem;padding:1.4rem 0 2rem;animation:enter .55s ease both;animation-delay:.12s}
-.empty-sheet p{margin:.4rem 0;font-size:1.15rem;line-height:1.6}
-.empty-sheet code,.href{font-family:var(--font-mono);font-size:.85em}
-.empty,.note{color:var(--ink-soft);max-width:40rem;line-height:1.6}
-.next a,.close a,.raw a{color:var(--seal);font-family:var(--font-mono);font-size:.85rem}
-.close{margin:0 0 1.2rem;animation:enter .4s ease both}
+.byline{display:flex;flex-wrap:wrap;align-items:baseline;gap:.3rem .85rem;margin-top:.28rem}
+.from,.byline time,.meta dd{font-family:var(--font-mono);font-size:.75rem;color:var(--ink-soft);overflow-wrap:anywhere}
+.mark{display:inline-block;font-family:var(--font-mono);font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;padding:.1rem .38rem;border:1px solid var(--rule);color:var(--ink-soft)}
+.mark.verify,.mark.untrusted{color:var(--seal-ink);border-color:var(--seal)}
+.empty-sheet,.sheet{max-width:40rem;padding:.2rem 0 1.4rem;animation:enter .55s ease both;animation-delay:.08s}
+.empty-sheet p,.note{margin:.4rem 0;line-height:1.6;color:var(--ink-soft)}
+.empty-sheet p{font-size:1.12rem;color:var(--ink)}
+.empty-sheet code{font-family:var(--font-mono);font-size:.85em}
+.sheet{border-top:1px solid var(--rule);padding-top:1.15rem;margin-top:.4rem}
+.sheet .note{max-width:38rem}
+.field{display:flex;flex-direction:column;gap:.35rem;margin:.9rem 0 .8rem;max-width:26rem;font-family:var(--font-mono);font-size:.75rem;color:var(--ink-soft)}
+.field input{font-family:var(--font-mono);font-size:.95rem;color:var(--ink);background:transparent;border:0;border-bottom:1px solid var(--ink);padding:.4rem 0;border-radius:0}
+.field input:focus{outline:none;border-bottom-color:var(--seal);border-bottom-width:2px}
+.choices{display:flex;flex-wrap:wrap;gap:.45rem .9rem;margin:.7rem 0 .9rem}
+.choice{display:flex;align-items:center;gap:.4rem;font-size:1.02rem}
+button{font-family:var(--font-mono);font-size:.82rem;background:var(--seal);color:var(--on-seal);border:0;padding:.48rem .85rem;cursor:pointer}
+button:hover{background:#9e2e1b;color:var(--on-seal)}
+.notice{color:var(--seal-ink);font-family:var(--font-mono);font-size:.85rem}
+.form-error{color:var(--seal-ink);margin:.6rem 0}
+.next a,.close a,.raw a,.links a{color:var(--seal-ink);overflow-wrap:anywhere}
+.close,.raw,.next{font-family:var(--font-mono);font-size:.85rem}
+.close{margin:0 0 1.1rem;animation:enter .4s ease both}
 .stack{position:relative;max-width:min(46rem,100%);animation:enter .55s ease both;animation-delay:.08s}
 .stack::before,.stack::after{content:"";position:absolute;inset:0;background:var(--paper-deep);border:1px solid var(--rule);pointer-events:none}
 .stack::before{transform:rotate(-1.15deg) translate(8px,10px)}
 .stack::after{transform:rotate(.7deg) translate(-5px,4px)}
-.letter{position:relative;z-index:1;background:var(--paper-sheet);color:var(--ink);padding:2rem 1.8rem 2.2rem;border:1px solid var(--ink)}
+.letter{position:relative;z-index:1;background:var(--letter);color:var(--letter-ink);padding:2rem 1.8rem 2.2rem;border:1px solid var(--letter-ink)}
 .letter h1{font-size:clamp(1.8rem,3.5vw,2.5rem);margin:.35rem 0 1.1rem}
+.letter .mark{color:#5e554a;border-color:#d3c4ab}
+.letter .mark.verify,.letter .mark.untrusted{color:#9e2e1b;border-color:#c23b22}
+.letter .meta dd,.letter .note,.letter .from{color:#5e554a}
+.letter .cmd{color:var(--letter-ink);border-bottom-color:#d3c4ab}
 .meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(12.5rem,1fr));gap:.65rem 1.1rem;margin:0 0 1.2rem}
 .meta dt{font-family:var(--font-mono);font-size:.68rem;letter-spacing:.08em;color:var(--ink-soft)}
+.letter .meta dt{color:#5e554a}
 .meta dd{margin:.2rem 0 0;color:var(--ink);word-break:break-all}
 .links{margin:0 0 1.2rem}
-.links h2{font-family:var(--font-display);font-weight:400;font-size:1.35rem;margin:0 0 .5rem}
+.links h2{margin:0 0 .45rem}
 .links ul{padding-left:1.1rem;margin:0}
-.links a{overflow-wrap:anywhere;word-break:normal;color:var(--seal);font-size:.82rem}
-.bodywrap{margin-top:.4rem;border-top:1px solid var(--rule);padding-top:1rem}
-.mailview{width:100%;min-height:26rem;border:0;background:var(--paper-sheet)}
-.plaintext,.cmd{white-space:pre-wrap;font-family:var(--font-mono);font-size:.86rem;background:transparent;color:var(--ink);padding:.2rem 0 1rem;margin:0;border-bottom:1px solid var(--rule);overflow:auto}
+.links a{font-family:var(--font-mono);font-size:.78rem}
+.bodywrap{margin-top:.4rem;border-top:1px solid #d3c4ab;padding-top:1rem}
+.mailview{width:100%;min-height:26rem;border:0;background:var(--letter)}
+.plaintext,.cmd{white-space:pre-wrap;font-family:var(--font-mono);font-size:.86rem;background:transparent;color:inherit;padding:.2rem 0 1rem;margin:0;border-bottom:1px solid var(--rule);overflow:auto}
 .raw{margin:1.2rem 0 0}
-@media (max-width:900px){
-  .desk{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr);align-content:start}
-  .stamp{height:auto;position:relative;display:grid;grid-template-columns:4.6rem 1fr;grid-template-rows:auto auto;gap:.7rem 1rem;align-items:center;border-right:0;border-bottom:1px solid var(--ink);padding:1.1rem 5vw 1.2rem}
-  .chop{grid-row:1 / span 2}
-  .addr{writing-mode:horizontal-tb;min-height:0;letter-spacing:0;align-self:center}
-  .stamp nav{flex-direction:row;flex-wrap:wrap;gap:.2rem 1rem;grid-column:2}
-  .who{margin-top:0;grid-column:1 / -1}
-  .ledger a{grid-template-columns:1fr;gap:.2rem}
+@media (max-width:720px){
+  .bar nav{margin-left:0}
   .stack::before,.stack::after{transform:none;inset:8px -6px -8px 8px}
-  .letter{padding:1.4rem 1.05rem 1.6rem}
+  .letter{padding:1.35rem 1rem 1.5rem}
 }
 @media (prefers-reduced-motion:reduce){
-  .folio-head,.filters,.ledger li,.empty-sheet,.close,.stack{animation:none}
+  .folio-head,.filters,.ledger li,.empty-sheet,.sheet,.close,.stack{animation:none}
 }
 @keyframes enter{
   from{opacity:0;transform:translateY(10px)}
