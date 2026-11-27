@@ -1,4 +1,9 @@
 {
+  // Copy to wrangler.jsonc and replace YOUR_* with your own Cloudflare resources.
+  // Do not put personal emails or Email Routing addresses here.
+  // Secrets (set in Dashboard or `wrangler secret put`, not in this file):
+  //   VAPID_PRIVATE_KEY, CF_API_TOKEN (Email Routing Addresses:Read), CF_ACCOUNT_ID
+  // Deploy guide: docs/deploy.md
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "git-identity-hub",
   "main": "src/index.ts",
@@ -39,6 +44,8 @@
   ],
   "vars": {
     "PUBLIC_MAILBOX": "git@example.com",
-    "IDENTITY_NAME": "Your Name"
+    "IDENTITY_NAME": "Your Name",
+    "VAPID_PUBLIC_KEY": "YOUR_VAPID_PUBLIC_KEY",
+    "VAPID_SUBJECT": "mailto:you@example.com"
   }
 }

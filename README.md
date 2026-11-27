@@ -1,27 +1,41 @@
 # git-identity-hub
 
-Cloudflare Worker：用 Email Routing 把 Git 平台邮件收进收件箱，按 DMARC/DKIM 分类，用 Access 保护 HTTP 界面。
+Cloudflare Worker：用 Email Routing 把 Git 平台邮件收进收件箱，按 DMARC/DKIM 分类，用 Access 保护 HTTP 界面。界面是 Material UI。
 
-不要把个人姓名、私人邮箱、其它转发别名写进 Git。邮箱路由地址、自定义域、Access 策略在 Cloudflare Dashboard 配置；`wrangler.jsonc` 里的 D1/KV 绑定供 CI 部署到已有 Worker，fork 请改成自己的资源 ID。
+开源协议：[MIT](./LICENSE)
+
+不要把个人姓名、私人邮箱、其它转发别名写进 Git。邮箱路由、自定义域、Access 在 Cloudflare Dashboard 配置；`wrangler.jsonc` 里的 D1/KV 绑定只给你自己的账号用，fork 请从 `wrangler.example.jsonc` 重建。
 
 ## 功能
 
 - `email()` 入站 → 分类（github / gitee / verify / other / untrusted）→ D1 索引
 - 原始 eml 写入 KV（账号开通 R2 后可把 `MAIL` 换成 R2）
-- Access 保护的信件列表 / 详情（可打开验证链接）/ 身份页 / 设置页。界面是 Material UI
-- 默认不转发。若要备份验证信，在设置页从已验证 destination 里选，或在 KV `CONFIG` 写入键 `forward_verify_to`
-- 部署后在设置页改 `user.name` 和 `user.email`。`IDENTITY_NAME` / `PUBLIC_MAILBOX` 只在身份表还没有记录时作默认值。改设置不会改 Email Routing
+- Access 保护的信件列表 / 详情 / 身份页 / 设置页
+- 设置页可改 `user.name`、`user.email`、外观、验证信转发（已验证 destination）、浏览器通知
+- 默认不转发。验证信可转到 Cloudflare 里已验证的 destination
 
-## 本地部署
+## 别人怎么部署
 
-1. 需要时对照 `wrangler.example.jsonc` 改 `wrangler.jsonc`
-2. `npm install && npx wrangler d1 execute git-identity-hub --remote --file=schema.sql && npx wrangler deploy`
+推荐：**Fork → 用自己的 D1/KV → Workers Builds 接仓库 → Dashboard 配 Email Routing 与 Access**。
 
-分类测试：`npm test`
+完整步骤、Secrets、常见问题见 **[docs/deploy.md](./docs/deploy.md)**。
 
-## CI/CD
+没有一键拷贝别人线上环境的方式；每人必须用自己的 Cloudflare 资源。本仓库 GitHub Actions 只跑测试，部署走 Cloudflare Workers Builds 或本机 `wrangler deploy`。
 
-- GitHub Actions（`.github/workflows/ci.yml`）：`main` 推送和 PR 跑 `npm test`
-- Cloudflare Workers Builds：`main` 推送后 `npx wrangler deploy`
+## 本地开发
 
-Email Routing 规则在 Dashboard 管理，不要写进 `addresses`，否则部署会和现有规则冲突。
+```bash
+cp wrangler.example.jsonc wrangler.jsonc   # 填自己的资源 ID
+npm install
+npm test
+npx wrangler d1 execute git-identity-hub --remote --file=schema.sql
+npx wrangler deploy
+```
+
+分类与界面测试：`npm test`
+
+## 注意
+
+- Email Routing 规则放在 Dashboard，**不要**写进 `addresses`，否则 CI 部署会和现有规则冲突
+- `IDENTITY_NAME` / `PUBLIC_MAILBOX` 只在身份表还没有记录时作默认值；之后在设置页改
+- 改设置里的邮箱不会改收信路由
