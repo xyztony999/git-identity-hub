@@ -2,14 +2,15 @@ import PostalMime from "postal-mime";
 import { classify, type MailSource } from "./classify";
 import { classifyInputFromHeaders, headerBag } from "./headers";
 import { extractLinks } from "./links";
+import { asSub, notifyNewMail, readSubs, removeSub, serviceWorkerScript, upsertSub, writeSubs } from "./push";
 import { detailPage, errorPage, faviconSvg, identityPage, inboxPage, settingsPage, type ThemeChoice } from "./ui";
 
 const SOURCES = new Set<MailSource>(["github", "gitee", "verify", "other", "untrusted"]);
 
 export default {
-  async email(message, env): Promise<void> {
+  async email(message, env, ctx): Promise<void> {
     const raw = await new Response(message.raw).arrayBuffer();
-    await ingest(message, env, raw);
+    await ingest(message, env, raw, ctx);
   },
 
   async fetch(request, env): Promise<Response> {
@@ -18,6 +19,24 @@ export default {
     const identity = await getIdentity(env);
     const theme = await loadTheme(env);
     const shell = { user, identityEmail: identity.user_email, theme };
+
+    if (request.method === "GET" && url.pathname === "/sw.js") {
+      return new Response(serviceWorkerScript(), {
+        headers: {
+          "content-type": "application/javascript; charset=utf-8",
+          "cache-control": "no-cache",
+          "service-worker-allowed": "/",
+        },
+      });
+    }
+
+    if (url.pathname === "/push/subscribe" && request.method === "POST") {
+      return savePushSubscription(request, env);
+    }
+
+    if (url.pathname === "/push/unsubscribe" && request.method === "POST") {
+      return dropPushSubscription(request, env);
+    }
 
     if (request.method === "GET" && url.pathname === "/favicon.ico") {
       return new Response(faviconSvg(), {
@@ -40,7 +59,7 @@ export default {
               ? "验证信会转到这个地址。"
               : "已停止转发验证信。"
             : null;
-      return html(settingsPage({ ...shell, forwardTo, notice, error: null }));
+      return html(settingsPage({ ...shell, forwardTo, notice, error: null, pushPublicKey: env.VAPID_PUBLIC_KEY || null }));
     }
 
     if (request.method === "GET" && url.pathname === "/") {
@@ -122,7 +141,7 @@ export default {
   },
 } satisfies ExportedHandler<Env>;
 
-async function ingest(message: ForwardableEmailMessage, env: Env, raw: ArrayBuffer): Promise<void> {
+async function ingest(message: ForwardableEmailMessage, env: Env, raw: ArrayBuffer, ctx: ExecutionContext): Promise<void> {
   const parsed = await PostalMime.parse(raw);
   const headers = headerBag(message.headers);
   const result = classify(
@@ -153,6 +172,7 @@ async function ingest(message: ForwardableEmailMessage, env: Env, raw: ArrayBuff
     formatAddress(parsed.from?.name, parsed.from?.address) || headers.get("from");
 
   await env.MAIL.put(key, raw);
+  let saved = false;
   try {
     await env.DB.prepare(
       `INSERT INTO messages (
@@ -180,9 +200,15 @@ async function ingest(message: ForwardableEmailMessage, env: Env, raw: ArrayBuff
         JSON.stringify(links),
       )
       .run();
+    saved = true;
   } catch (err) {
     const text = String(err);
     if (!/UNIQUE/i.test(text)) throw err;
+  }
+
+  if (saved) {
+    const subject = parsed.subject ?? headers.get("subject") ?? null;
+    ctx.waitUntil(notifyNewMail(env, { id, subject, source: result.source }));
   }
 
   if (result.source === "verify") {
@@ -231,6 +257,7 @@ async function saveSettings(
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
   const forwardTo = await env.CONFIG.get("forward_verify_to");
+  const pushPublicKey = env.VAPID_PUBLIC_KEY || null;
   if (intent === "theme") {
     const next = String(form.get("theme") ?? "");
     if (next !== "light" && next !== "dark" && next !== "system") {
@@ -238,6 +265,7 @@ async function saveSettings(
         settingsPage({
           ...shell,
           forwardTo,
+          pushPublicKey,
           notice: null,
           error: "没有这个外观选项。重选后再保存。",
         }),
@@ -254,6 +282,7 @@ async function saveSettings(
         settingsPage({
           ...shell,
           forwardTo: dest,
+          pushPublicKey,
           notice: null,
           error: "地址格式不对。写成 name@example.com 再保存。",
         }),
@@ -265,6 +294,7 @@ async function saveSettings(
         settingsPage({
           ...shell,
           forwardTo: dest,
+          pushPublicKey,
           notice: null,
           error: "不能转到这本账册自己的公开邮箱。",
         }),
@@ -279,6 +309,7 @@ async function saveSettings(
     settingsPage({
       ...shell,
       forwardTo,
+      pushPublicKey,
       notice: null,
       error: "没有这项设置。回到设置页再保存。",
     }),
@@ -288,6 +319,30 @@ async function saveSettings(
 
 function redirect(location: string): Response {
   return new Response(null, { status: 303, headers: { Location: location } });
+}
+
+async function savePushSubscription(request: Request, env: Env): Promise<Response> {
+  if (!sameOrigin(request)) return new Response("来源不对。从设置页再开启。", { status: 403 });
+  const sub = asSub(await request.json().catch(() => null));
+  if (!sub) return new Response("订阅格式不对。重新开启通知。", { status: 400 });
+  const list = await readSubs(env);
+  await writeSubs(env, upsertSub(list, sub));
+  return new Response(null, { status: 204 });
+}
+
+async function dropPushSubscription(request: Request, env: Env): Promise<Response> {
+  if (!sameOrigin(request)) return new Response("来源不对。从设置页再关闭。", { status: 403 });
+  const body = (await request.json().catch(() => null)) as { endpoint?: unknown } | null;
+  const endpoint = body && typeof body.endpoint === "string" ? body.endpoint : "";
+  if (!endpoint.startsWith("https://")) return new Response("没有这台订阅。", { status: 400 });
+  await writeSubs(env, removeSub(await readSubs(env), endpoint));
+  return new Response(null, { status: 204 });
+}
+
+function sameOrigin(request: Request): boolean {
+  const origin = request.headers.get("Origin");
+  if (!origin) return false;
+  return origin === new URL(request.url).origin;
 }
 
 async function getIdentity(env: Env): Promise<IdentityRow> {

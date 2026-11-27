@@ -195,6 +195,7 @@ export function settingsPage(opts: {
   forwardTo: string | null;
   notice: string | null;
   error: string | null;
+  pushPublicKey?: string | null;
 }): string {
   const theme = opts.theme === "light" || opts.theme === "dark" || opts.theme === "system" ? opts.theme : "system";
   const notice = opts.notice ? `<p class="notice" role="status">${escapeHtml(opts.notice)}</p>` : "";
@@ -239,8 +240,120 @@ export function settingsPage(opts: {
           <button type="submit">保存外观</button>
         </form>
       </section>
+      ${pushSection(opts.pushPublicKey)}
     </main>`,
   });
+}
+
+function pushSection(publicKey: string | null | undefined): string {
+  if (!publicKey) {
+    return `<section class="sheet">
+      <h2>浏览器通知</h2>
+      <p class="note">通知密钥还没配好，这台账册暂时不能推送。</p>
+    </section>`;
+  }
+  return `<section class="sheet" id="push-panel" data-key="${escapeAttr(publicKey)}">
+    <h2>浏览器通知</h2>
+    <p class="note">不转发时，新来信可以推到这台浏览器。页面关着也会响。先允许通知，再点开启。</p>
+    <p class="note" id="push-state">正在检查这台浏览器。</p>
+    <div class="push-actions">
+      <button type="button" id="push-on">开启通知</button>
+      <button type="button" id="push-off" hidden>关闭通知</button>
+    </div>
+    <script>${pushScript()}</script>
+  </section>`;
+}
+
+function pushScript(): string {
+  return `(function () {
+  var panel = document.getElementById("push-panel");
+  var state = document.getElementById("push-state");
+  var on = document.getElementById("push-on");
+  var off = document.getElementById("push-off");
+  if (!panel || !state || !on || !off) return;
+  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+    state.textContent = "这台浏览器不支持通知。";
+    on.hidden = true;
+    return;
+  }
+  function keyBytes(value) {
+    var padded = value + "=".repeat((4 - value.length % 4) % 4);
+    var b64 = padded.replace(/-/g, "+").replace(/_/g, "/");
+    var raw = atob(b64);
+    var out = new Uint8Array(raw.length);
+    for (var i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+    return out;
+  }
+  function registration() {
+    return navigator.serviceWorker.getRegistration();
+  }
+  function paint(sub) {
+    if (sub) {
+      state.textContent = "这台浏览器会收到新来信。页面关着也会响。";
+      on.hidden = true;
+      off.hidden = false;
+      return;
+    }
+    off.hidden = true;
+    if (Notification.permission === "denied") {
+      state.textContent = "浏览器拒绝了通知。到站点设置里允许后再开启。";
+      on.hidden = true;
+      return;
+    }
+    state.textContent = "还没开。开启后，新来信会推到这台浏览器。";
+    on.hidden = false;
+  }
+  on.addEventListener("click", function () {
+    Notification.requestPermission().then(function (permission) {
+      if (permission !== "granted") {
+        state.textContent = "没有允许通知。浏览器不会响。";
+        return;
+      }
+      return navigator.serviceWorker.register("/sw.js").then(function (reg) {
+        return reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: keyBytes(panel.dataset.key || ""),
+        });
+      }).then(function (sub) {
+        return fetch("/push/subscribe", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(sub.toJSON()),
+        });
+      }).then(function (res) {
+        if (!res.ok) {
+          state.textContent = "订阅没有保存。过一会儿再试。";
+          return;
+        }
+        return registration().then(function (reg) {
+          return reg ? reg.pushManager.getSubscription() : null;
+        }).then(paint);
+      }).catch(function () {
+        state.textContent = "没有订上。确认浏览器允许通知后再试。";
+      });
+    });
+  });
+  off.addEventListener("click", function () {
+    registration().then(function (reg) {
+      return reg ? reg.pushManager.getSubscription() : null;
+    }).then(function (sub) {
+      if (!sub) return;
+      var endpoint = sub.endpoint;
+      return sub.unsubscribe().then(function () {
+        return fetch("/push/unsubscribe", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ endpoint: endpoint }),
+        });
+      });
+    }).then(function () { paint(null); }).catch(function () {
+      state.textContent = "没有关掉。再点一次关闭通知。";
+    });
+  });
+  registration().then(function (reg) {
+    return reg ? reg.pushManager.getSubscription() : null;
+  }).then(paint).catch(function () { paint(null); });
+})();`;
 }
 
 export function errorPage(opts: {
@@ -440,7 +553,7 @@ h2{font-family:var(--font-display);font-weight:400;font-size:1.55rem;margin:0 0 
 .field{display:flex;flex-direction:column;gap:.35rem;margin:.9rem 0 .8rem;max-width:26rem;font-family:var(--font-mono);font-size:.75rem;color:var(--ink-soft)}
 .field input{font-family:var(--font-mono);font-size:.95rem;color:var(--ink);background:transparent;border:0;border-bottom:1px solid var(--ink);padding:.4rem 0;border-radius:0}
 .field input:focus{outline:none;border-bottom-color:var(--seal);border-bottom-width:2px}
-.choices{display:flex;flex-wrap:wrap;gap:.45rem .9rem;margin:.7rem 0 .9rem}
+.choices,.push-actions{display:flex;flex-wrap:wrap;gap:.45rem .9rem;margin:.7rem 0 .9rem}
 .choice{display:flex;align-items:center;gap:.4rem;font-size:1.02rem}
 button{font-family:var(--font-mono);font-size:.82rem;background:var(--seal);color:var(--on-seal);border:0;padding:.48rem .85rem;cursor:pointer}
 button:hover{background:#9e2e1b;color:var(--on-seal)}

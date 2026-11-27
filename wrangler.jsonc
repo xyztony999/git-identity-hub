@@ -32,5 +32,9 @@
       "binding": "MAIL",
       "id": "700e87aee4164ff8836e86f22e5bad73"
     }
-  ]
+  ],
+  "vars": {
+    "VAPID_PUBLIC_KEY": "BIzS02PHD3Cxo-pEsfhs9m_FkCkK_fOZ2GCxWI7JrXN3yqDZHJz-DiePpHbL-i9MQohUByDzg4Jat2XJH2ugVgc",
+    "VAPID_SUBJECT": "https://git.tonyxyz.com"
+  }
 }
