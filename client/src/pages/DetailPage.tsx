@@ -1,5 +1,6 @@
+import { ArrowBack, Download } from "@mui/icons-material";
+import { Button, Chip, Paper, Stack, Typography } from "@mui/material";
 import React from "react";
-import { Button, Chip, Link, Paper, Stack, Typography } from "@mui/material";
 import { Link as RouterLink } from "react-router-dom";
 import { formatTime, sourceLabel } from "../labels";
 import type { MessageDetail } from "../types";
@@ -11,10 +12,10 @@ export function DetailPage(props: { message: MessageDetail }) {
       title="信件正文"
       sandbox="allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation"
       srcDoc={framedHtml(msg.html)}
-      style={{ width: "100%", minHeight: "26rem", border: 0, background: "#fff" }}
+      style={{ width: "100%", minHeight: "28rem", border: 0, background: "#fff", borderRadius: 8 }}
     />
   ) : msg.text_preview ? (
-    <Typography component="pre" sx={{ whiteSpace: "pre-wrap", fontFamily: "inherit" }}>
+    <Typography component="pre" sx={{ whiteSpace: "pre-wrap", fontFamily: "inherit", m: 0 }}>
       {msg.text_preview}
     </Typography>
   ) : (
@@ -22,43 +23,42 @@ export function DetailPage(props: { message: MessageDetail }) {
   );
 
   return (
-    <Stack spacing={2}>
-      <Button component={RouterLink} to="/" sx={{ alignSelf: "flex-start" }}>
-        合上这封信，回账册
+    <Stack spacing={1}>
+      <Button
+        component={RouterLink}
+        to="/"
+        startIcon={<ArrowBack />}
+        color="inherit"
+        sx={{ alignSelf: "flex-start", ml: -1 }}
+      >
+        返回
       </Button>
       <Paper variant="outlined" sx={{ p: { xs: 2, sm: 3 } }}>
-        <Stack spacing={2}>
-          <Chip
-            label={sourceLabel(msg.source)}
-            color={msg.source === "verify" || msg.source === "untrusted" ? "primary" : "default"}
-            variant="outlined"
-            sx={{ alignSelf: "flex-start" }}
-          />
-          <Typography variant="h4" component="h1">
+        <Stack spacing={2.5}>
+          <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap", alignItems: "center" }}>
+            <Chip size="small" label={sourceLabel(msg.source)} variant="outlined" />
+            <AuthChip name="DMARC" value={msg.auth_dmarc} />
+            <AuthChip name="DKIM" value={msg.auth_dkim} />
+          </Stack>
+          <Typography variant="h5" component="h1">
             {msg.subject || "无主题"}
           </Typography>
-          <Stack direction="row" spacing={3} useFlexGap sx={{ flexWrap: "wrap" }}>
+          <Stack spacing={1.25}>
             <Meta label="时间" value={formatTime(msg.received_at)} />
-            <Meta label="头 From" value={msg.header_from || "无"} />
+            <Meta label="发件人" value={msg.header_from || "无"} />
             <Meta label="信封" value={msg.envelope_from || "无"} />
             <Meta label="收件" value={msg.rcpt_to || "无"} />
-            <Meta label="DMARC" value={msg.auth_dmarc || "无记录"} />
-            <Meta label="DKIM" value={msg.auth_dkim || "无记录"} />
             {msg.github_reason ? <Meta label="订阅" value={msg.github_reason} /> : null}
           </Stack>
-          {msg.links.length > 0 ? (
-            <Stack spacing={1}>
-              <Typography variant="h6">信里的链接</Typography>
-              {msg.links.map((href) => (
-                <Link key={href} href={href} target="_blank" rel="noopener noreferrer" sx={{ wordBreak: "break-all" }}>
-                  {href}
-                </Link>
-              ))}
-            </Stack>
-          ) : null}
           {body}
           {msg.has_raw ? (
-            <Button component="a" href={`/m/${encodeURIComponent(msg.id)}/raw`}>
+            <Button
+              component="a"
+              href={`/m/${encodeURIComponent(msg.id)}/raw`}
+              startIcon={<Download />}
+              variant="text"
+              sx={{ alignSelf: "flex-start" }}
+            >
               下载原始邮件
             </Button>
           ) : (
@@ -70,13 +70,28 @@ export function DetailPage(props: { message: MessageDetail }) {
   );
 }
 
+function AuthChip(props: { name: string; value: string | null }) {
+  const value = props.value?.toLowerCase() ?? "";
+  const pass = value === "pass";
+  const fail = value === "fail" || value === "permerror" || value === "temperror";
+  const label = pass ? `${props.name} 通过` : value ? `${props.name} ${value}` : `${props.name} 无记录`;
+  return (
+    <Chip
+      size="small"
+      label={label}
+      color={pass ? "success" : fail ? "error" : "default"}
+      variant={pass || fail ? "filled" : "outlined"}
+    />
+  );
+}
+
 function Meta(props: { label: string; value: string }) {
   return (
-    <Stack spacing={0.25} sx={{ minWidth: 140 }}>
+    <Stack spacing={0.25}>
       <Typography variant="caption" color="text.secondary">
         {props.label}
       </Typography>
-      <Typography variant="body2" sx={{ wordBreak: "break-all" }}>
+      <Typography variant="body2" sx={{ overflowWrap: "anywhere" }}>
         {props.value}
       </Typography>
     </Stack>

@@ -83,14 +83,17 @@ describe("inbox", () => {
 });
 
 describe("detail", () => {
-  it("opens the message with links and the raw download", () => {
+  it("opens the message with auth status and a text back button", () => {
     const html = render(createElement(DetailPage, { message: detail }));
     assert.match(html, /MuiPaper-root/);
-    assert.match(html, /合上这封信，回账册/);
+    assert.match(html, /MuiButton-text/);
+    assert.match(html, /ArrowBack/);
+    assert.match(html, />返回</);
+    assert.match(html, /DMARC 通过/);
+    assert.match(html, /DKIM 通过/);
     assert.match(html, /下载原始邮件/);
-    assert.match(html, /信里的链接/);
-    assert.match(html, /https:\/\/github\.com\/example\/repo\/issues\/1/);
-    assert.doesNotMatch(html, /打开验证链接/);
+    assert.doesNotMatch(html, /信里的链接/);
+    assert.doesNotMatch(html, /github\.com\/example\/repo\/issues\/1/);
   });
 });
 
