@@ -29,7 +29,7 @@
 cp wrangler.example.jsonc wrangler.jsonc
 ```
 
-3. 先不要提交带真实资源 ID 的 `wrangler.jsonc` 到公开仓库，除非你明确要给自己的 CI 用。模板里的 `YOUR_*` 必须换成你自己的。
+3. **`wrangler.jsonc` 不要提交到公开仓库**（已在 `.gitignore`）。仓库里只保留 `wrangler.example.jsonc`。模板里的 `YOUR_*` 换成你自己的资源 ID、域名和 VAPID 公钥。
 
 ## 2. 创建 Cloudflare 资源
 
@@ -104,10 +104,19 @@ npx wrangler deploy
 
 ### Workers Builds（推荐长期用法）
 
-1. Cloudflare Dashboard → **Workers & Pages** → 你的 Worker（或新建）→ **Settings → Builds**
-2. 连接你 fork 后的 GitHub 仓库，分支选 `main`
-3. 构建/部署命令保持用项目里的 `wrangler deploy`（会跑 `npm run build:client`）
-4. 在 Builds 环境里配置与上面相同的 Secrets；D1/KV 绑定仍以仓库里的 `wrangler.jsonc` 为准
+公开仓库里**没有**带真实 ID 的 `wrangler.jsonc`，所以 Builds 有两种接法：
+
+1. **私有 fork / 私有部署仓（推荐给自己的线上环境）**  
+   把填好的 `wrangler.jsonc` 只放在私有仓，Cloudflare Builds 连那个仓的 `main`。公开模板仓保持干净。
+2. **本机 `wrangler deploy`**  
+   本地保留 gitignore 的 `wrangler.jsonc`，改完代码后本机部署；公开仓的 Actions 只跑测试。
+
+公共步骤：
+
+1. Cloudflare Dashboard → **Workers & Pages** → 你的 Worker → **Settings → Builds**（若走 Builds）
+2. 连接**含真实 `wrangler.jsonc` 的仓库**（通常是私有 fork），分支选 `main`
+3. 部署命令用 `npx wrangler deploy`（会跑 `npm run build:client`）
+4. 在 Builds / Worker 里配置 Secrets（见上一节）
 
 本仓库的 GitHub Actions **只跑测试**，不负责部署，也不需要 Cloudflare API Token 进 Actions。
 
@@ -137,8 +146,11 @@ npx wrangler deploy
 
 ## 常见问题
 
+**公开仓里以前有过别人的 `wrangler.jsonc`？**  
+应以当前 `main` 为准：真实配置已从仓库移除。D1/KV 的 UUID 本身不能当登录凭证用，但域名和资源 ID 属于运营信息，不应再出现在公开模板里。从 `wrangler.example.jsonc` 复制一份自己的即可。
+
 **Fork 后还看到别人的 D1/KV ID**  
-把 `wrangler.jsonc` 换成你自己资源，或从 `wrangler.example.jsonc` 重新复制再填。
+从 `wrangler.example.jsonc` 重新复制，填自己的资源，不要提交到公开 fork。
 
 **部署提示 Email Routing / addresses 冲突**  
 配置里不要写 `addresses`。规则只在 Dashboard 维护。

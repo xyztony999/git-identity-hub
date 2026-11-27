@@ -4,7 +4,7 @@ Cloudflare Worker：用 Email Routing 把 Git 平台邮件收进收件箱，按 
 
 开源协议：[MIT](./LICENSE)
 
-不要把个人姓名、私人邮箱、其它转发别名写进 Git。邮箱路由、自定义域、Access 在 Cloudflare Dashboard 配置；`wrangler.jsonc` 里的 D1/KV 绑定只给你自己的账号用，fork 请从 `wrangler.example.jsonc` 重建。
+不要把个人姓名、私人邮箱、其它转发别名写进 Git。邮箱路由、自定义域、Access 在 Cloudflare Dashboard 配置。带真实 D1/KV ID、域名的 `wrangler.jsonc` **不要进公开仓库**（已 gitignore）；fork 从 `wrangler.example.jsonc` 复制。
 
 ## 功能
 

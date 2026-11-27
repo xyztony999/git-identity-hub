@@ -2,6 +2,7 @@ node_modules/
 dist/
 .wrangler/
 .dev.vars
+wrangler.jsonc
 wrangler.private.jsonc
 *.log
 worker-configuration.d.ts
