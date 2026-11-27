@@ -2,6 +2,7 @@ import PostalMime from "postal-mime";
 import { classify, type MailSource } from "./classify";
 import { classifyInputFromHeaders, headerBag } from "./headers";
 import { extractLinks } from "./links";
+import { verifiedDestinationEmails } from "./destinations";
 import { asSub, notifyNewMail, readSubs, removeSub, serviceWorkerScript, upsertSub, writeSubs } from "./push";
 
 const SOURCES = new Set<MailSource>(["github", "gitee", "verify", "other", "untrusted"]);
@@ -71,6 +72,11 @@ export default {
       if (!msg) return json({ message: "账册里找不到这封信。回到列表看最近的记录。" }, 404);
       await env.DB.prepare("UPDATE messages SET read = 1 WHERE id = ?").bind(id).run();
       return json(publicMessage({ ...msg, read: 1 }, true));
+    }
+
+    if (url.pathname === "/api/destinations" && request.method === "GET") {
+      const listed = await listVerifiedDestinations(env, identity.user_email);
+      return json({ destinations: listed.destinations, message: listed.message });
     }
 
     if (url.pathname === "/api/settings" && request.method === "POST") {
@@ -203,6 +209,29 @@ async function listMessages(env: Env, source: MailSource | null): Promise<Stored
   return results ?? [];
 }
 
+async function listVerifiedDestinations(
+  env: Env,
+  identityEmail: string,
+): Promise<{ destinations: string[]; message: string | null }> {
+  if (!env.CF_API_TOKEN || !env.CF_ACCOUNT_ID) {
+    return { destinations: [], message: "还不能读取 Email Routing 里的地址。" };
+  }
+  const rows: unknown[] = [];
+  for (let page = 1; page <= 10; page++) {
+    const response = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/email/routing/addresses?per_page=50&page=${page}&verified=true`,
+      { headers: { authorization: `Bearer ${env.CF_API_TOKEN}` } },
+    );
+    if (!response.ok) {
+      return { destinations: [], message: "没有读到已验证的转发地址。过一会儿再打开设置。" };
+    }
+    const body = (await response.json()) as { result?: unknown; result_info?: { total_pages?: number } };
+    if (Array.isArray(body.result)) rows.push(...body.result);
+    if (page >= (body.result_info?.total_pages ?? 1)) break;
+  }
+  return { destinations: verifiedDestinationEmails(rows, identityEmail), message: null };
+}
+
 async function loadTheme(env: Env): Promise<ThemeChoice> {
   const raw = await env.CONFIG.get("ui_theme");
   if (raw === "light" || raw === "dark" || raw === "system") return raw;
@@ -225,19 +254,24 @@ async function saveSettings(request: Request, env: Env, identityEmail: string): 
     });
   }
   if (intent === "forward") {
-    const dest = String(body?.forward_to ?? "").trim();
-    if (dest && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(dest)) {
-      return json({ message: "地址格式不对。写成 name@example.com 再保存。" }, 400);
+    const requested = String(body?.forward_to ?? "").trim();
+    if (!requested) {
+      await env.CONFIG.delete("forward_verify_to");
+      return json({
+        message: "已停止转发验证信。",
+        theme: await loadTheme(env),
+        forwardTo: null,
+      });
     }
-    if (dest && dest.toLowerCase() === identityEmail.toLowerCase()) {
-      return json({ message: "不能转到这本账册自己的公开邮箱。" }, 400);
-    }
-    if (dest) await env.CONFIG.put("forward_verify_to", dest);
-    else await env.CONFIG.delete("forward_verify_to");
+    const listed = await listVerifiedDestinations(env, identityEmail);
+    if (listed.message) return json({ message: listed.message }, 503);
+    const dest = listed.destinations.find((email) => email.toLowerCase() === requested.toLowerCase());
+    if (!dest) return json({ message: "这个地址不在已验证的 destination 里。重新选择后再保存。" }, 400);
+    await env.CONFIG.put("forward_verify_to", dest);
     return json({
-      message: dest ? "验证信会转到这个地址。" : "已停止转发验证信。",
+      message: "验证信会转到这个地址。",
       theme: await loadTheme(env),
-      forwardTo: dest || null,
+      forwardTo: dest,
     });
   }
   return json({ message: "没有这项设置。回到设置页再保存。" }, 400);

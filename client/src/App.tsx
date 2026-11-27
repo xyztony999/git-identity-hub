@@ -111,6 +111,19 @@ function DetailRoute() {
 function SettingsRoute(props: { boot: Bootstrap; onBoot: (next: Bootstrap) => void }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [destinations, setDestinations] = useState<string[]>([]);
+  const [destinationsMessage, setDestinationsMessage] = useState<string | null>(null);
+  useEffect(() => {
+    getJson<{ destinations: string[]; message: string | null }>("/api/destinations")
+      .then((body) => {
+        setDestinations(body.destinations);
+        setDestinationsMessage(body.message);
+      })
+      .catch((err: unknown) => {
+        setDestinations([]);
+        setDestinationsMessage(err instanceof Error ? err.message : "没有读到已验证的转发地址。过一会儿再打开设置。");
+      });
+  }, []);
   async function save(body: { intent: "forward" | "theme"; forward_to?: string; theme?: ThemeChoice }) {
     setError(null);
     setNotice(null);
@@ -125,6 +138,8 @@ function SettingsRoute(props: { boot: Bootstrap; onBoot: (next: Bootstrap) => vo
   return (
     <SettingsPage
       forwardTo={props.boot.forwardTo}
+      destinations={destinations}
+      destinationsMessage={destinationsMessage}
       theme={props.boot.theme}
       pushPublicKey={props.boot.pushPublicKey}
       notice={notice}

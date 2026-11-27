@@ -1,9 +1,11 @@
-import { Alert, Button, FormControlLabel, Radio, RadioGroup, Stack, TextField, Typography } from "@mui/material";
+import { Alert, Button, FormControlLabel, MenuItem, Radio, RadioGroup, Stack, TextField, Typography } from "@mui/material";
 import React, { useEffect, useState } from "react";
 import type { ThemeChoice } from "../types";
 
 export function SettingsPage(props: {
   forwardTo: string | null;
+  destinations: string[];
+  destinationsMessage: string | null;
   theme: ThemeChoice;
   pushPublicKey: string | null;
   notice: string | null;
@@ -11,14 +13,16 @@ export function SettingsPage(props: {
   onSaveForward?: (value: string) => void;
   onSaveTheme?: (value: ThemeChoice) => void;
 }) {
-  const [forward, setForward] = useState(props.forwardTo ?? "");
+  const known = props.destinations.some((email) => email.toLowerCase() === (props.forwardTo ?? "").toLowerCase());
+  const [forward, setForward] = useState(known ? props.forwardTo ?? "" : "");
   const [theme, setTheme] = useState<ThemeChoice>(props.theme);
   const [pushText, setPushText] = useState("正在检查这台浏览器。");
   const [pushOn, setPushOn] = useState(false);
 
   useEffect(() => {
-    setForward(props.forwardTo ?? "");
-  }, [props.forwardTo]);
+    const stillKnown = props.destinations.some((email) => email.toLowerCase() === (props.forwardTo ?? "").toLowerCase());
+    setForward(stillKnown ? props.forwardTo ?? "" : "");
+  }, [props.forwardTo, props.destinations]);
   useEffect(() => {
     setTheme(props.theme);
   }, [props.theme]);
@@ -63,16 +67,27 @@ export function SettingsPage(props: {
       <Stack spacing={1} component="form" onSubmit={(event) => event.preventDefault()}>
         <Typography variant="h6">验证信转发</Typography>
         <Typography color="text.secondary">
-          只有分类为「验证」的信会转到这个地址。GitHub 通知和 Gitee 绑定信仍只记在账册里。地址必须是 Cloudflare Email Routing 里已经验证过的 destination。留空再保存，就停止转发。
+          从 Cloudflare Email Routing 里已验证的地址中选。只有分类为「验证」的信会转到这个地址。GitHub 通知和 Gitee 绑定信仍只记在账册里。选「不转发」就只留在账册。
         </Typography>
+        {props.destinationsMessage ? <Alert severity="warning">{props.destinationsMessage}</Alert> : null}
+        {props.forwardTo && !known ? (
+          <Alert severity="warning">当前地址不在已验证列表里。请重新选择，或选不转发。</Alert>
+        ) : null}
         <TextField
+          select
           label="转发到"
-          type="email"
           value={forward}
-          placeholder="name@example.com"
           onChange={(event) => setForward(event.target.value)}
           fullWidth
-        />
+          disabled={props.destinations.length === 0}
+        >
+          <MenuItem value="">不转发</MenuItem>
+          {props.destinations.map((email) => (
+            <MenuItem key={email} value={email}>
+              {email}
+            </MenuItem>
+          ))}
+        </TextField>
         <Button variant="contained" type="button" onClick={() => props.onSaveForward?.(forward.trim())} sx={{ alignSelf: "flex-start" }}>
           保存转发
         </Button>

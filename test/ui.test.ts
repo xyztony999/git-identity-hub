@@ -128,13 +128,17 @@ describe("settings", () => {
     const html = render(
       createElement(SettingsPage, {
         forwardTo: "desk@example.com",
+        destinations: ["desk@example.com", "other@example.com"],
+        destinationsMessage: null,
         theme: "dark",
         pushPublicKey: "BElob-public-key_example",
         notice: "验证信会转到这个地址。",
         error: null,
       }),
     );
-    assert.match(html, /只有分类为「验证」的信会转到这个地址/);
+    assert.match(html, /已验证的地址中选/);
+    assert.match(html, /不转发/);
+    assert.match(html, /desk@example.com/);
     assert.match(html, /浅色/);
     assert.match(html, /跟随系统/);
     assert.match(html, /开启通知/);
@@ -146,6 +150,8 @@ describe("settings", () => {
     const html = render(
       createElement(SettingsPage, {
         forwardTo: null,
+        destinations: [],
+        destinationsMessage: "还不能读取 Email Routing 里的地址。",
         theme: "system",
         pushPublicKey: null,
         notice: null,

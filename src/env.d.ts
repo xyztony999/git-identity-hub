@@ -10,6 +10,8 @@ interface Env {
   VAPID_PUBLIC_KEY?: string;
   VAPID_PRIVATE_KEY?: string;
   VAPID_SUBJECT?: string;
+  CF_API_TOKEN?: string;
+  CF_ACCOUNT_ID?: string;
 }
 
 type MailSource = "github" | "gitee" | "verify" | "other" | "untrusted";
