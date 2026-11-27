@@ -2,7 +2,7 @@ import PostalMime from "postal-mime";
 import { classify, type MailSource } from "./classify";
 import { classifyInputFromHeaders, headerBag } from "./headers";
 import { extractLinks } from "./links";
-import { detailPage, identityPage, inboxPage } from "./ui";
+import { detailPage, errorPage, identityPage, inboxPage } from "./ui";
 
 const SOURCES = new Set<MailSource>(["github", "gitee", "verify", "other", "untrusted"]);
 
@@ -16,6 +16,13 @@ export default {
     const url = new URL(request.url);
     const user = request.headers.get("Cf-Access-Authenticated-User-Email");
     const identity = await getIdentity(env);
+
+    if (request.method === "GET" && url.pathname === "/favicon.ico") {
+      return new Response(
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" fill="#c23b22"/><text x="16" y="23" text-anchor="middle" font-size="18" fill="#f3ead8">收</text></svg>`,
+        { headers: { "content-type": "image/svg+xml", "cache-control": "public, max-age=86400" } },
+      );
+    }
 
     if (request.method === "GET" && url.pathname === "/") {
       const sourceParam = url.searchParams.get("source");
@@ -39,11 +46,44 @@ export default {
     if (mailMatch && request.method === "GET") {
       const id = decodeURIComponent(mailMatch[1]);
       const msg = await env.DB.prepare("SELECT * FROM messages WHERE id = ?").bind(id).first<StoredMessage>();
-      if (!msg) return new Response("Not found", { status: 404 });
+      if (!msg) {
+        return html(
+          errorPage({
+            user,
+            identityEmail: identity.user_email,
+            title: "没有这封信",
+            message: "账册里找不到这封信。回到列表看最近的记录。",
+            next: { href: "/", label: "回账册" },
+          }),
+          404,
+        );
+      }
       if (mailMatch[2] === "raw") {
-        if (!msg.r2_key) return new Response("No stored copy", { status: 404 });
+        if (!msg.r2_key) {
+          return html(
+            errorPage({
+              user,
+              identityEmail: identity.user_email,
+              title: "没有原始邮件",
+              message: "这封信没有保存 eml。可以回账册，或打开摘要。",
+              next: { href: `/m/${encodeURIComponent(id)}`, label: "打开摘要" },
+            }),
+            404,
+          );
+        }
         const raw = await env.MAIL.get(msg.r2_key, "arrayBuffer");
-        if (!raw) return new Response("Missing eml", { status: 404 });
+        if (!raw) {
+          return html(
+            errorPage({
+              user,
+              identityEmail: identity.user_email,
+              title: "原始邮件缺失",
+              message: "记录还在，文件不在。回账册继续看其它信。",
+              next: { href: "/", label: "回账册" },
+            }),
+            404,
+          );
+        }
         return new Response(raw, {
           headers: {
             "content-type": "message/rfc822",
@@ -55,7 +95,16 @@ export default {
       return html(detailPage({ msg: { ...msg, read: 1 }, user, identityEmail: identity.user_email }));
     }
 
-    return new Response("Not found", { status: 404 });
+    return html(
+      errorPage({
+        user,
+        identityEmail: identity.user_email,
+        title: "没有这个页面",
+        message: "地址不对。回到账册继续看信。",
+        next: { href: "/", label: "回账册" },
+      }),
+      404,
+    );
   },
 } satisfies ExportedHandler<Env>;
 
@@ -178,8 +227,9 @@ function clip(value: string | null, max: number): string | null {
   return value.length > max ? `${value.slice(0, max)}…` : value;
 }
 
-function html(body: string): Response {
+function html(body: string, status = 200): Response {
   return new Response(body, {
+    status,
     headers: {
       "content-type": "text/html; charset=utf-8",
       "cache-control": "no-store",
