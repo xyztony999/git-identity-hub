@@ -1,5 +1,6 @@
 import PostalMime from "postal-mime";
 import { classify, type MailSource } from "./classify";
+import { classifyInputFromHeaders, headerBag } from "./headers";
 import { extractLinks } from "./links";
 import { detailPage, identityPage, inboxPage } from "./ui";
 
@@ -61,18 +62,14 @@ export default {
 async function ingest(message: ForwardableEmailMessage, env: Env, raw: ArrayBuffer): Promise<void> {
   const parsed = await PostalMime.parse(raw);
   const headers = headerBag(message.headers);
-  const result = classify({
-    authResultsHeaders: headers.all("authentication-results"),
-    headerFrom: parsed.from?.address ?? headers.get("from"),
-    envelopeFrom: message.from,
-    subject: parsed.subject ?? headers.get("subject"),
-    githubRecipient: headers.get("x-github-recipient"),
-    githubRecipientAddress: headers.get("x-github-recipient-address"),
-    listId: headers.get("list-id"),
-    cc: headers.get("cc"),
-    text: parsed.text ?? null,
-    html: parsed.html ?? null,
-  });
+  const result = classify(
+    classifyInputFromHeaders(message.headers, message.from, {
+      fromAddress: parsed.from?.address ?? null,
+      subject: parsed.subject ?? null,
+      text: parsed.text ?? null,
+      html: parsed.html ?? null,
+    }),
+  );
 
   const messageId = headers.get("message-id") || parsed.messageId || null;
   if (messageId) {
@@ -169,23 +166,6 @@ async function getIdentity(env: Env): Promise<IdentityRow> {
       gitee_verified: 0,
     }
   );
-}
-
-function headerBag(headers: Headers) {
-  return {
-    get(name: string): string | null {
-      return headers.get(name);
-    },
-    all(name: string): string[] {
-      const getAll = (headers as Headers & { getAll?: (n: string) => string[] }).getAll;
-      if (typeof getAll === "function") {
-        const values = getAll.call(headers, name);
-        if (values.length) return values;
-      }
-      const single = headers.get(name);
-      return single ? [single] : [];
-    },
-  };
 }
 
 function formatAddress(name: string | undefined, address: string | undefined): string | null {
