@@ -104,21 +104,38 @@ npx wrangler deploy
 
 ### Workers Builds（推荐长期用法）
 
-公开仓库里**没有**带真实 ID 的 `wrangler.jsonc`，所以 Builds 有两种接法：
+公开仓库**不提交**真实 `wrangler.jsonc`。Builds 在部署前用环境变量生成一份：
 
-1. **私有 fork / 私有部署仓（推荐给自己的线上环境）**  
-   把填好的 `wrangler.jsonc` 只放在私有仓，Cloudflare Builds 连那个仓的 `main`。公开模板仓保持干净。
-2. **本机 `wrangler deploy`**  
-   本地保留 gitignore 的 `wrangler.jsonc`，改完代码后本机部署；公开仓的 Actions 只跑测试。
+1. Cloudflare Dashboard → Worker → **Settings → Builds**
+2. 连接 fork 后的 GitHub 仓库，分支选 `main`
+3. **Deploy command** 设为：
 
-公共步骤：
+```bash
+npm run deploy
+```
 
-1. Cloudflare Dashboard → **Workers & Pages** → 你的 Worker → **Settings → Builds**（若走 Builds）
-2. 连接**含真实 `wrangler.jsonc` 的仓库**（通常是私有 fork），分支选 `main`
-3. 部署命令用 `npx wrangler deploy`（会跑 `npm run build:client`）
-4. 在 Builds / Worker 里配置 Secrets（见上一节）
+（等价于 `node scripts/prepare-wrangler.mjs && wrangler deploy`）
 
-本仓库的 GitHub Actions **只跑测试**，不负责部署，也不需要 Cloudflare API Token 进 Actions。
+4. 在 Builds 的 **Environment variables**（不是 Worker Secrets）里加入：
+
+| 变量 | 说明 |
+| --- | --- |
+| `WRANGLER_D1_DATABASE_ID` | D1 `database_id` |
+| `WRANGLER_KV_CONFIG_ID` | KV `CONFIG` 的 id |
+| `WRANGLER_KV_MAIL_ID` | KV `MAIL` 的 id |
+| `WRANGLER_CUSTOM_DOMAIN` | 可选，如 `git.example.com` |
+| `WRANGLER_VAPID_PUBLIC_KEY` | 可选，浏览器通知公钥 |
+| `WRANGLER_VAPID_SUBJECT` | 可选，如 `https://git.example.com` |
+
+这些只存在 Cloudflare Builds 侧，不会进公开 Git。建议勾成 secret。
+
+5. Worker **Secrets** 仍按上一节配置（`VAPID_PRIVATE_KEY`、`CF_API_TOKEN`、`CF_ACCOUNT_ID`）。
+
+只在 Dashboard 里点绑定、却不配上述 Builds 变量 / 不跑 `prepare-wrangler`，**救不了**这次失败：`wrangler deploy` 仍要读仓库里的配置文件。
+
+本机开发：`cp wrangler.example.jsonc wrangler.jsonc` 后直接 `npm run deploy`；本地已有文件时，脚本不会覆盖。
+
+本仓库的 GitHub Actions **只跑测试**，不负责部署。
 
 ## 5. 自定义域与 Access
 

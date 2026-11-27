@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "wrangler dev",
     "build:client": "vite build",
-    "deploy": "wrangler deploy",
+    "prepare:wrangler": "node scripts/prepare-wrangler.mjs",
+    "deploy": "node scripts/prepare-wrangler.mjs && wrangler deploy",
     "types": "wrangler types",
     "test": "tsx --test test/*.test.ts",
     "check": "tsc --noEmit"
