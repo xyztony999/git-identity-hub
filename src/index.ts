@@ -3,7 +3,6 @@ import { classify, type MailSource } from "./classify";
 import { classifyInputFromHeaders, headerBag } from "./headers";
 import { extractLinks } from "./links";
 import { asSub, notifyNewMail, readSubs, removeSub, serviceWorkerScript, upsertSub, writeSubs } from "./push";
-import { detailPage, errorPage, faviconSvg, identityPage, inboxPage, settingsPage, type ThemeChoice } from "./ui";
 
 const SOURCES = new Set<MailSource>(["github", "gitee", "verify", "other", "untrusted"]);
 
@@ -17,8 +16,6 @@ export default {
     const url = new URL(request.url);
     const user = request.headers.get("Cf-Access-Authenticated-User-Email");
     const identity = await getIdentity(env);
-    const theme = await loadTheme(env);
-    const shell = { user, identityEmail: identity.user_email, theme };
 
     if (request.method === "GET" && url.pathname === "/sw.js") {
       return new Response(serviceWorkerScript(), {
@@ -44,100 +41,63 @@ export default {
       });
     }
 
-    if (url.pathname === "/settings" && request.method === "POST") {
-      return saveSettings(request, env, shell);
+    if (url.pathname === "/api/bootstrap" && request.method === "GET") {
+      return json({
+        user,
+        identity: {
+          user_name: identity.user_name,
+          user_email: identity.user_email,
+          gpg_fingerprint: identity.gpg_fingerprint,
+          github_verified: identity.github_verified,
+          gitee_verified: identity.gitee_verified,
+        },
+        theme: await loadTheme(env),
+        forwardTo: await env.CONFIG.get("forward_verify_to"),
+        pushPublicKey: env.VAPID_PUBLIC_KEY || null,
+      });
     }
 
-    if (request.method === "GET" && url.pathname === "/settings") {
-      const forwardTo = await env.CONFIG.get("forward_verify_to");
-      const saved = url.searchParams.get("saved");
-      const notice =
-        saved === "theme"
-          ? "外观已保存。"
-          : saved === "forward"
-            ? forwardTo
-              ? "验证信会转到这个地址。"
-              : "已停止转发验证信。"
-            : null;
-      return html(settingsPage({ ...shell, forwardTo, notice, error: null, pushPublicKey: env.VAPID_PUBLIC_KEY || null }));
-    }
-
-    if (request.method === "GET" && url.pathname === "/") {
+    if (url.pathname === "/api/messages" && request.method === "GET") {
       const sourceParam = url.searchParams.get("source");
       const source = sourceParam && SOURCES.has(sourceParam as MailSource) ? (sourceParam as MailSource) : null;
       const rows = await listMessages(env, source);
-      return html(
-        inboxPage({
-          ...shell,
-          rows,
-          source,
-        }),
-      );
+      return json({ messages: rows.map((row) => publicMessage(row, false)) });
     }
 
-    if (request.method === "GET" && url.pathname === "/identity") {
-      return html(identityPage({ ...shell, identity }));
-    }
-
-    const mailMatch = url.pathname.match(/^\/m\/([^/]+)(?:\/(raw))?$/);
-    if (mailMatch && request.method === "GET") {
-      const id = decodeURIComponent(mailMatch[1]);
+    const apiMessage = url.pathname.match(/^\/api\/messages\/([^/]+)$/);
+    if (apiMessage && request.method === "GET") {
+      const id = decodeURIComponent(apiMessage[1]);
       const msg = await env.DB.prepare("SELECT * FROM messages WHERE id = ?").bind(id).first<StoredMessage>();
-      if (!msg) {
-        return html(
-          errorPage({
-            ...shell,
-            title: "没有这封信",
-            message: "账册里找不到这封信。回到列表看最近的记录。",
-            next: { href: "/", label: "回账册" },
-          }),
-          404,
-        );
-      }
-      if (mailMatch[2] === "raw") {
-        if (!msg.r2_key) {
-          return html(
-            errorPage({
-              ...shell,
-              title: "没有原始邮件",
-              message: "这封信没有保存 eml。可以回账册，或打开摘要。",
-              next: { href: `/m/${encodeURIComponent(id)}`, label: "打开摘要" },
-            }),
-            404,
-          );
-        }
-        const raw = await env.MAIL.get(msg.r2_key, "arrayBuffer");
-        if (!raw) {
-          return html(
-            errorPage({
-              ...shell,
-              title: "原始邮件缺失",
-              message: "记录还在，文件不在。回账册继续看其它信。",
-              next: { href: "/", label: "回账册" },
-            }),
-            404,
-          );
-        }
-        return new Response(raw, {
-          headers: {
-            "content-type": "message/rfc822",
-            "content-disposition": `attachment; filename="${id}.eml"`,
-          },
-        });
-      }
+      if (!msg) return json({ message: "账册里找不到这封信。回到列表看最近的记录。" }, 404);
       await env.DB.prepare("UPDATE messages SET read = 1 WHERE id = ?").bind(id).run();
-      return html(detailPage({ ...shell, msg: { ...msg, read: 1 } }));
+      return json(publicMessage({ ...msg, read: 1 }, true));
     }
 
-    return html(
-      errorPage({
-        ...shell,
-        title: "没有这个页面",
-        message: "地址不对。回到账册继续看信。",
-        next: { href: "/", label: "回账册" },
-      }),
-      404,
-    );
+    if (url.pathname === "/api/settings" && request.method === "POST") {
+      return saveSettings(request, env, identity.user_email);
+    }
+
+    const rawMatch = url.pathname.match(/^\/m\/([^/]+)\/raw$/);
+    if (rawMatch && request.method === "GET") {
+      const id = decodeURIComponent(rawMatch[1]);
+      const msg = await env.DB.prepare("SELECT r2_key FROM messages WHERE id = ?").bind(id).first<{ r2_key: string | null }>();
+      if (!msg) return json({ message: "账册里找不到这封信。回到列表看最近的记录。" }, 404);
+      if (!msg.r2_key) return json({ message: "这封信没有保存原始邮件。" }, 404);
+      const raw = await env.MAIL.get(msg.r2_key, "arrayBuffer");
+      if (!raw) return json({ message: "记录还在，原始邮件不在。回账册继续看其它信。" }, 404);
+      return new Response(raw, {
+        headers: {
+          "content-type": "message/rfc822",
+          "content-disposition": `attachment; filename="${id}.eml"`,
+        },
+      });
+    }
+
+    if (url.pathname.startsWith("/api/")) {
+      return json({ message: "没有这个接口。" }, 404);
+    }
+
+    return env.ASSETS.fetch(request);
   },
 } satisfies ExportedHandler<Env>;
 
@@ -249,76 +209,38 @@ async function loadTheme(env: Env): Promise<ThemeChoice> {
   return "system";
 }
 
-async function saveSettings(
-  request: Request,
-  env: Env,
-  shell: { user: string | null; identityEmail: string; theme: ThemeChoice },
-): Promise<Response> {
-  const form = await request.formData();
-  const intent = String(form.get("intent") ?? "");
-  const forwardTo = await env.CONFIG.get("forward_verify_to");
-  const pushPublicKey = env.VAPID_PUBLIC_KEY || null;
+async function saveSettings(request: Request, env: Env, identityEmail: string): Promise<Response> {
+  const body = (await request.json().catch(() => null)) as { intent?: unknown; theme?: unknown; forward_to?: unknown } | null;
+  const intent = String(body?.intent ?? "");
   if (intent === "theme") {
-    const next = String(form.get("theme") ?? "");
+    const next = String(body?.theme ?? "");
     if (next !== "light" && next !== "dark" && next !== "system") {
-      return html(
-        settingsPage({
-          ...shell,
-          forwardTo,
-          pushPublicKey,
-          notice: null,
-          error: "没有这个外观选项。重选后再保存。",
-        }),
-        400,
-      );
+      return json({ message: "没有这个外观选项。重选后再保存。" }, 400);
     }
     await env.CONFIG.put("ui_theme", next);
-    return redirect("/settings?saved=theme");
+    return json({
+      message: "外观已保存。",
+      theme: next,
+      forwardTo: await env.CONFIG.get("forward_verify_to"),
+    });
   }
   if (intent === "forward") {
-    const dest = String(form.get("forward_to") ?? "").trim();
+    const dest = String(body?.forward_to ?? "").trim();
     if (dest && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(dest)) {
-      return html(
-        settingsPage({
-          ...shell,
-          forwardTo: dest,
-          pushPublicKey,
-          notice: null,
-          error: "地址格式不对。写成 name@example.com 再保存。",
-        }),
-        400,
-      );
+      return json({ message: "地址格式不对。写成 name@example.com 再保存。" }, 400);
     }
-    if (dest && dest.toLowerCase() === shell.identityEmail.toLowerCase()) {
-      return html(
-        settingsPage({
-          ...shell,
-          forwardTo: dest,
-          pushPublicKey,
-          notice: null,
-          error: "不能转到这本账册自己的公开邮箱。",
-        }),
-        400,
-      );
+    if (dest && dest.toLowerCase() === identityEmail.toLowerCase()) {
+      return json({ message: "不能转到这本账册自己的公开邮箱。" }, 400);
     }
     if (dest) await env.CONFIG.put("forward_verify_to", dest);
     else await env.CONFIG.delete("forward_verify_to");
-    return redirect("/settings?saved=forward");
+    return json({
+      message: dest ? "验证信会转到这个地址。" : "已停止转发验证信。",
+      theme: await loadTheme(env),
+      forwardTo: dest || null,
+    });
   }
-  return html(
-    settingsPage({
-      ...shell,
-      forwardTo,
-      pushPublicKey,
-      notice: null,
-      error: "没有这项设置。回到设置页再保存。",
-    }),
-    400,
-  );
-}
-
-function redirect(location: string): Response {
-  return new Response(null, { status: 303, headers: { Location: location } });
+  return json({ message: "没有这项设置。回到设置页再保存。" }, 400);
 }
 
 async function savePushSubscription(request: Request, env: Env): Promise<Response> {
@@ -369,12 +291,42 @@ function clip(value: string | null, max: number): string | null {
   return value.length > max ? `${value.slice(0, max)}…` : value;
 }
 
-function html(body: string, status = 200): Response {
-  return new Response(body, {
+function json(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
     status,
-    headers: {
-      "content-type": "text/html; charset=utf-8",
-      "cache-control": "no-store",
-    },
+    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
   });
+}
+
+function publicMessage(row: StoredMessage, full: boolean) {
+  const summary = {
+    id: row.id,
+    received_at: row.received_at,
+    envelope_from: row.envelope_from,
+    header_from: row.header_from,
+    rcpt_to: row.rcpt_to,
+    source: row.source,
+    auth_dmarc: row.auth_dmarc,
+    auth_dkim: row.auth_dkim,
+    subject: row.subject,
+    github_reason: row.github_reason,
+    read: row.read,
+    has_raw: Boolean(row.r2_key),
+  };
+  if (!full) return summary;
+  return { ...summary, text_preview: row.text_preview, html: row.html, links: parseLinks(row.links) };
+}
+
+function parseLinks(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function faviconSvg(): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="#c23b22"/><path fill="#fff" d="M6 10h20v12H6z"/><path fill="#c23b22" d="M6 10l10 8 10-8"/></svg>`;
 }

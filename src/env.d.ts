@@ -1,7 +1,10 @@
+type ThemeChoice = "light" | "dark" | "system";
+
 interface Env {
   DB: D1Database;
   CONFIG: KVNamespace;
   MAIL: KVNamespace;
+  ASSETS: Fetcher;
   PUBLIC_MAILBOX: string;
   IDENTITY_NAME: string;
   VAPID_PUBLIC_KEY?: string;
